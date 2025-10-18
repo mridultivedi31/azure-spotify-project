@@ -1,19 +1,19 @@
 {
-	"name": "incremental_ingestion",
+	"name": "practice",
 	"properties": {
 		"activities": [
 			{
-				"name": "AzureSQLToLake",
+				"name": "Copy data",
 				"type": "Copy",
 				"dependsOn": [
 					{
-						"activity": "LookupCDC",
+						"activity": "Lookup1",
 						"dependencyConditions": [
 							"Succeeded"
 						]
 					},
 					{
-						"activity": "current",
+						"activity": "Set variable",
 						"dependencyConditions": [
 							"Succeeded"
 						]
@@ -31,7 +31,7 @@
 					"source": {
 						"type": "AzureSqlSource",
 						"sqlReaderQuery": {
-							"value": "select * from @{pipeline().parameters.schema}.@{pipeline().parameters.table} where @{pipeline().parameters.cdc_col} > '@{activity('LookupCDC').output.value[0].cdc}'",
+							"value": "select * from @{pipeline().parameters.schema}.@{pipeline().parameters.table}\nwhere \n@{pipeline().parameters.date_col} > '@{if(empty(pipeline().parameters.backdate), activity('Lookup1').output.value[0].cdc , pipeline().parameters.backdate)}'",
 							"type": "Expression"
 						},
 						"queryTimeout": "02:00:00",
@@ -81,7 +81,7 @@
 				]
 			},
 			{
-				"name": "LookupCDC",
+				"name": "Lookup1",
 				"type": "Lookup",
 				"dependsOn": [],
 				"policy": {
@@ -117,7 +117,7 @@
 				}
 			},
 			{
-				"name": "current",
+				"name": "Set variable",
 				"type": "SetVariable",
 				"dependsOn": [],
 				"policy": {
@@ -138,7 +138,7 @@
 				"type": "IfCondition",
 				"dependsOn": [
 					{
-						"activity": "AzureSQLToLake",
+						"activity": "Copy data",
 						"dependencyConditions": [
 							"Succeeded"
 						]
@@ -147,12 +147,12 @@
 				"userProperties": [],
 				"typeProperties": {
 					"expression": {
-						"value": "@greater(activity('AzureSQLToLake').output.dataread, 0)",
+						"value": "@greater(activity('Copy data').output.dataRead, 0)",
 						"type": "Expression"
 					},
 					"ifFalseActivities": [
 						{
-							"name": "DeleteEmpty file",
+							"name": "Delete1",
 							"type": "Delete",
 							"dependsOn": [],
 							"policy": {
@@ -190,11 +190,11 @@
 					],
 					"ifTrueActivities": [
 						{
-							"name": "Update_last_cdc",
+							"name": "Update last cdc",
 							"type": "Copy",
 							"dependsOn": [
 								{
-									"activity": "max_cdc",
+									"activity": "Script",
 									"dependencyConditions": [
 										"Succeeded"
 									]
@@ -215,7 +215,7 @@
 										{
 											"name": "cdc",
 											"value": {
-												"value": "@activity('max_cdc').output.resultSets[0].rows[0].cdc",
+												"value": "@activity('Script').output.resultSets[0].rows[0].cdc",
 												"type": "Expression"
 											}
 										}
@@ -247,7 +247,7 @@
 									"parameters": {
 										"container": "bronze",
 										"folder": "cdc",
-										"file": "empty (1).json"
+										"file": "empty.json"
 									}
 								}
 							],
@@ -258,13 +258,13 @@
 									"parameters": {
 										"container": "bronze",
 										"folder": "cdc",
-										"file": "cdc (1).json"
+										"file": "cdc.json"
 									}
 								}
 							]
 						},
 						{
-							"name": "max_cdc",
+							"name": "Script",
 							"type": "Script",
 							"dependsOn": [],
 							"policy": {
@@ -284,7 +284,7 @@
 									{
 										"type": "Query",
 										"text": {
-											"value": "select max(@{pipeline().parameters.cdc_col}) as cdc from @{pipeline().parameters.schema}.@{pipeline().parameters.table}",
+											"value": "select max(@{pipeline().parameters.date_col}) as cdc\nfrom @{pipeline().parameters.schema}.@{pipeline().parameters.table}",
 											"type": "Expression"
 										}
 									}
@@ -303,10 +303,10 @@
 			"table": {
 				"type": "string"
 			},
-			"cdc_col": {
+			"date_col": {
 				"type": "string"
 			},
-			"from_date": {
+			"backdate": {
 				"type": "string"
 			}
 		},
